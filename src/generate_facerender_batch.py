@@ -5,7 +5,7 @@ from skimage import io, img_as_float32, transform
 import torch
 import scipy.io as scio
 
-def get_facerender_data(coeff_path, pic_path, first_coeff_path, audio_path, 
+def get_facerender_data(coeff_path, pic_path, first_coeff_path, audio_path, split_vocals,
                         batch_size, input_yaw_list=None, input_pitch_list=None, input_roll_list=None, 
                         expression_scale=1.0, still_mode = False, preprocess='crop', size = 256):
 
@@ -71,7 +71,8 @@ def get_facerender_data(coeff_path, pic_path, first_coeff_path, audio_path,
     target_semantics_np = target_semantics_np.reshape(batch_size, -1, target_semantics_np.shape[-2], target_semantics_np.shape[-1])
     data['target_semantics_list'] = torch.FloatTensor(target_semantics_np)
     data['video_name'] = video_name
-    data['audio_path'] = audio_path
+    data['audio_path'] = split_vocals
+    data['original_audio_path'] = audio_path
     
     if input_yaw_list is not None:
         yaw_c_seq = gen_camera_pose(input_yaw_list, frame_num, batch_size)

@@ -207,7 +207,7 @@ class AnimateFromCoeff():
         av_path = os.path.join(video_save_dir, video_name)
         return_path = av_path 
         
-        audio_path =  x['audio_path'] 
+        audio_path =  x['original_audio_path']
         audio_name = os.path.splitext(os.path.split(audio_path)[-1])[0]
         new_audio_path = os.path.join(video_save_dir, audio_name+'.wav')
         start_time = 0
