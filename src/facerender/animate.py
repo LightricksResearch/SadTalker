@@ -2,16 +2,19 @@ import os
 import cv2
 import yaml
 import numpy as np
-import warnings
+# import warnings
 from skimage import img_as_ubyte
 import safetensors
 import safetensors.torch 
-warnings.filterwarnings('ignore')
+# warnings.filterwarnings('ignore')
 
+from worker_src.parameters import VideoEnhancer
+from worker_src.parameters import metadata
+from ltxcloudapi.mlworker.worker import duration
 
 import imageio
 import torch
-import torchvision
+# import torchvision
 
 
 from src.facerender.modules.keypoint_detector import HEEstimator, KPDetector
@@ -20,9 +23,12 @@ from src.facerender.modules.generator import OcclusionAwareGenerator, OcclusionA
 from src.facerender.modules.make_animation import make_animation 
 
 from pydub import AudioSegment 
-from src.utils.face_enhancer import enhancer_generator_with_len, enhancer_list
+# from src.utils.face_enhancer import enhancer_generator_with_len, enhancer_list
 from src.utils.paste_pic import paste_pic
 from src.utils.videoio import save_video_with_watermark
+from VideoFaceEnhance.face_enhancement import face_enhancer
+from src.utils.videoio import load_video_to_cv2
+
 
 try:
     import webui  # in webui
@@ -154,7 +160,7 @@ class AnimateFromCoeff():
 
         return checkpoint['epoch']
 
-    def generate(self, x, video_save_dir, pic_path, crop_info, enhancer=None, background_enhancer=None, preprocess='crop', img_size=256):
+    def generate(self, x, video_save_dir, pic_path, crop_info, enhancer, preprocess='crop', img_size=256):
 
         source_image=x['source_image'].type(torch.FloatTensor)
         source_semantics=x['source_semantics'].type(torch.FloatTensor)
@@ -180,9 +186,10 @@ class AnimateFromCoeff():
 
         frame_num = x['frame_num']
 
-        predictions_video = make_animation(source_image, source_semantics, target_semantics,
-                                        self.generator, self.kp_extractor, self.he_estimator, self.mapping, 
-                                        yaw_c_seq, pitch_c_seq, roll_c_seq, use_exp = True)
+        with duration.labels(phase="animate", feature=metadata.name).time():
+            predictions_video = make_animation(source_image, source_semantics, target_semantics,
+                                            self.generator, self.kp_extractor, self.he_estimator, self.mapping,
+                                            yaw_c_seq, pitch_c_seq, roll_c_seq, use_exp = True)
 
         predictions_video = predictions_video.reshape((-1,)+predictions_video.shape[2:])
         predictions_video = predictions_video[:frame_num]
@@ -233,21 +240,29 @@ class AnimateFromCoeff():
             full_video_path = av_path 
 
         #### paste back then enhancers
-        if False: #enhancer:
+        if enhancer == VideoEnhancer.video_ai_enhancer:
             video_name_enhancer = x['video_name']  + '_enhanced.mp4'
             enhanced_path = os.path.join(video_save_dir, 'temp_'+video_name_enhancer)
             av_path_enhancer = os.path.join(video_save_dir, video_name_enhancer) 
             return_path = av_path_enhancer
 
-            try:
-                enhanced_images_gen_with_len = enhancer_generator_with_len(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
-                imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
-            except:
-                enhanced_images_gen_with_len = enhancer_list(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
-                imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
+            # read full_video_path
+            images = load_video_to_cv2(full_video_path)
+            # enhance the video
+            with duration.labels(phase="enhance", feature=metadata.name).time():
+                enhanced_images = face_enhancer(images)
+            # save to temporary audio-free enhanced_path
+            imageio.mimsave(enhanced_path, enhanced_images, fps=float(25))
+
+            # try:
+            #     enhanced_images_gen_with_len = enhancer_generator_with_len(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
+            #     imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
+            # except:
+            #     enhanced_images_gen_with_len = enhancer_list(full_video_path, method=enhancer, bg_upsampler=background_enhancer)
+            #     imageio.mimsave(enhanced_path, enhanced_images_gen_with_len, fps=float(25))
             
             save_video_with_watermark(enhanced_path, new_audio_path, av_path_enhancer, watermark= False)
-            print(f'The generated video is named {video_save_dir}/{video_name_enhancer}')
+            print(f'The generated video is named {return_path}')
             os.remove(enhanced_path)
 
         os.remove(path)
